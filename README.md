@@ -1,96 +1,157 @@
-Context-Aware Sentiment Analysis - Sarcasm and Gen Z Slang Detection in Social Media Text
+# Context-Aware Sentiment Analysis — Sarcasm and Gen Z Slang Detection in Social Media Text
 
-This repository contains the implementation and resources for the Interim Progress Demonstration (IPD) project titled:
-“A Context-Aware Machine Learning Model for Detecting Sarcasm and Gen Z Slangs in Youth-Driven Platforms.”
-The project focuses on improving traditional sentiment analysis by incorporating sarcasm awareness and Gen Z slang detection to better interpret youth-driven social media content, particularly from Reddit.
+This repository contains the full implementation for the Final Year Project (FYP) titled:  
+**"A Context-Aware Machine Learning Model for Detecting Sarcasm and Gen Z Slangs in Youth-Driven Platforms."**
 
-Project Information
+The project develops a complete end-to-end NLP pipeline that combines sarcasm detection, Gen Z slang identification, and sentiment analysis into a single Multi-Task Learning (MTL) model, enabling more accurate interpretation of youth-driven Reddit content.
 
-Student: Kushalya Dandeniya (w1954812)
-Degree: BSc (Hons) Business Data Analytics
-University: University of Westminster
+---
+
+## Project Aim
+
+To develop a context-aware sentiment analysis pipeline using Machine Learning and Natural Language Processing that can accurately interpret sarcastic and slang-rich social media comments, enabling more reliable insights into Gen Z engagement and online sentiment.
+
+---
 
 
-Project Aim
+## Dataset Overview
 
-The aim of this project is to develop a context-aware sentiment analysis pipeline using Machine Learning and Natural Language Processing techniques that can accurately interpret sarcastic and slang-rich social media comments, enabling more reliable insights into Gen Z engagement and online sentiment.
+| Dataset | Description |
+|---|---|
+| `SAMPLE DATASET 50K.csv` | 50,000 Reddit comments with sarcasm labels, parent comment context, and metadata |
+| `genz_slang.csv` | Gen Z slang terms with definitions |
+| `all_slangs.csv` | Extended slang dictionary (merged and deduplicated at runtime) |
 
-Key Features
+The primary dataset includes sarcastic and non-sarcastic comment pairs, making them well-suited for context-aware youth-focused sentiment analysis.
 
-Sarcasm-aware sentiment labelling using VADER polarity inversion
-Rule-based Gen Z slang detection using a custom slang dictionary
-Context creation by combining parent comments and reply comments
-TF-IDF vectorization with integrated metadata features
-Exploratory Data Analysis on sarcasm, slang, and sentiment
-Prepared pipeline for both traditional ML and transformer-based models
+---
 
-Dataset Overview
+## Pipeline Overview (12 Steps)
 
-Primary Dataset: Sarcasm on Reddit (Kaggle)
-Sample Size: 50,000 comments 
+### Step 1 — Setup & Imports
+Installs all dependencies (`vaderSentiment`, `transformers`, `torch`, `rapidfuzz`, `wordcloud`, `imbalanced-learn`, `gradio`) and mounts Google Drive. Defines a `cache()` utility that pickles expensive computations to Drive, enabling seamless resumption across Colab sessions.
 
-Additional Datasets:
-genz_slang.csv
-all_slangs.csv
+### Step 2 — Data Loading
+Loads the three CSV datasets and validates column structure and dataset sizes.
 
-The datasets contain sarcastic and non-sarcastic comments with frequent Gen Z slang usage, making them suitable for youth-focused sentiment analysis.
+### Step 3 — Preprocessing
+Builds a unified slang dictionary from `genz_slang.csv` and `all_slangs.csv` (merged and deduplicated). Cleans the sarcasm dataset by dropping irrelevant columns (`author`, `ups`, `downs`, `date`), removing nulls and duplicates, and renaming `label` to `sarcasm_flag`. Constructs a `full_text` field by concatenating each comment with its parent comment to provide conversation context.
 
-Methodology Summary
+### Step 4 — Improved Slang Detection (v2)
+Implements two slang detectors for direct comparison:
 
-Data Cleaning and Preprocessing
+**v1 (Original — IPD baseline):** Exact dictionary lookup only.
 
-Removal of duplicates, missing values, URLs, mentions, hashtags, and short texts
-Context creation using parent and reply comments
+**v2 (Improved — Final):** Three-layer detection system:
+- **Layer 1:** O(1) set-based exact match
+- **Layer 2:** Prefix-gated fuzzy matching via `rapidfuzz` (only fires when the 3-character prefix exists in the prefix index, reducing candidates to ~5)
+- **Layer 3:** A single pre-compiled combined regex covering 16 multi-word Gen Z constructions (`no cap`, `fr fr`, `slay`, `low key`, `chef's kiss`, etc.)
 
-Slang Detection
+Both detectors are cached to Drive to avoid recomputation.
 
-Creation of a merged slang dictionary from multiple open-source datasets
-Rule-based slang flagging and slang context extraction
+### Step 5 — Improved Sentiment Labelling (v2 — RoBERTa)
+Implements two sentiment labellers for comparison:
 
-Sentiment Labelling
+**v1 (Original — IPD baseline):** VADER compound score with polarity inversion for sarcastic comments (3 classes: Neutral / Negative / Positive).
 
-Automated sentiment scoring using VADER
-Polarity inversion applied for sarcastic comments to reflect true sentiment
+**v2 (Improved — Final):** `cardiffnlp/twitter-roberta-base-sentiment-latest`, a model pre-trained on 124M tweets. Runs in batches of 1,024 with GPU acceleration and includes incremental partial-save every 10K rows for crash recovery. Agreement between VADER and RoBERTa is analysed overall and broken down by sarcasm flag to demonstrate the improvement on sarcastic comments specifically.
 
-Feature Engineering
+### Step 6 — Data Cleaning
+Removes URLs, `@mentions`, strips `#` symbols while preserving the word (slang hashtags), collapses whitespace, removes comments shorter than 10 characters, and drops duplicates. Adds a `text_len` metadata feature (sarcastic comments tend to be shorter and punchier).
 
-TF-IDF vectorization with a maximum of 8,000 features
-Metadata feature extraction (text length)
-Stratified 70/15/15 train-validation-test split
+### Step 7 — Deep EDA (Exploratory Data Analysis)
+Comprehensive visual analysis including:
+- Sarcasm distribution and sentiment distribution (bar charts)
+- Slang detection rate comparison (v1 vs v2)
+- Correlation heatmap of sarcasm, slang, sentiment, and text length
+- Word clouds for sarcastic vs non-sarcastic comments
+- Top slang terms detected
+- Sentiment distribution broken down by sarcasm flag
+- Text length distribution by sarcasm and sentiment
 
-Exploratory Data Analysis
+### Step 8 — Dataset Split & TF-IDF Features
+Stratified 70/15/15 train/validation/test split on the final dataset (using RoBERTa labels). TF-IDF vectorisation with 8,000 maximum features, combined via `scipy.sparse.hstack` with scaled metadata features (`text_len`, `sarcasm_flag`, `slang_flag`).
 
-Distribution analysis and heatmaps for sarcasm, slang, and sentiment
+### Step 9 — Baseline ML Models
+Trains and evaluates three traditional models on the TF-IDF feature matrix:
+- **Logistic Regression**
+- **Linear SVM**
+- **Random Forest**
 
-Technologies Used:
+Each model is then re-trained using **SMOTE** oversampling to address class imbalance and compared on weighted F1 and accuracy. A target F1 line of 0.75 is shown on the comparison chart.
 
-Python
-Google Colab
-Pandas and NumPy
-NLTK (VADER Sentiment Analyzer)
-Scikit-learn
-Matplotlib and Seaborn
+### Step 10 — Single-Task DistilBERT
+Fine-tunes `distilbert-base-uncased` for 3-class sentiment classification using the Hugging Face `Trainer` API. Trained for 3 epochs with mixed-precision (fp16), cosine warmup, and best-model checkpointing. Tokenised datasets are cached to Drive. Evaluated on the held-out test set and results are added to the global comparison table.
 
-Current Project Status
+### Step 11 — Multi-Task Learning (MTL) Model — *Main Novelty*
+The core contribution of the project. A single shared `DistilBertModel` encoder feeds three independent task-specific heads simultaneously:
 
-Completed:
+| Head | Task | Output |
+|---|---|---|
+| `sarcasm_head` | Sarcasm detection | Binary (2 classes) |
+| `sentiment_head` | Sentiment classification | 3 classes (Neutral / Negative / Positive) |
+| `slang_head` | Slang detection | Binary (2 classes) |
 
-Data collection
-Data preprocessing and cleaning
-Exploratory Data Analysis
-Feature engineering and dataset preparation
+**Training:** Weighted combined loss (`α=1.0` sarcasm + `β=1.0` sentiment + `γ=0.5` slang) with AdamW (`lr=2e-5`), gradient clipping, and epoch-level checkpointing for crash recovery. Best model is selected based on sentiment F1. Training history (loss and F1 per epoch across all three tasks) is plotted.
 
-In progress:
+**Inference:** A single forward pass produces all three outputs simultaneously.
 
-Machine Learning model development
-Transformer-based model fine-tuning
-Model evaluation and comparison
-Dashboard development using PowerBI
+### Step 12 — Full Model Comparison & Results
+Generates a complete ranked comparison table and bar chart across all 8 models (3 baselines × 2 SMOTE variants + single-task DistilBERT + MTL DistilBERT). Also produces a dedicated MTL chart showing F1 scores across all three tasks. Final results table is saved to `model_results.csv` on Google Drive.
 
-Future Work
+---
 
-Train and evaluate traditional ML models (Logistic Regression, SVM, Random Forest)
-Fine-tune a transformer model such as DistilBERT
-Address class imbalance using SMOTE and class-weighted loss functions
-Develop an interactive dashboard for sentiment insights
-Final model integration and end-to-end testing
+## Interactive Dashboard (Gradio)
+
+A Gradio-powered dashboard is embedded at the end of the notebook and launches directly in Colab via a public share link.
+
+**Features:**
+- **Single Comment tab:** Enter any Reddit comment (with optional parent comment for context) and get instant sarcasm, sentiment, and slang predictions with emoji output.
+- **Batch CSV upload tab:** Upload a CSV with a `comment` column (and optional `parent_comment` column) for bulk inference on up to 200 rows.
+- Summary statistics (sarcasm rate, slang rate, sentiment breakdown) displayed per run.
+- Pre-loaded example comments for quick testing.
+
+The dashboard loads all model weights from Google Drive at startup — no retraining required.
+
+---
+
+## Technologies Used
+
+| Category | Tools |
+|---|---|
+| Language | Python 3 |
+| Environment | Google Colab (T4 GPU) |
+| Data | Pandas, NumPy |
+| NLP | NLTK (VADER), Hugging Face Transformers |
+| Models | Scikit-learn, PyTorch, DistilBERT, Twitter-RoBERTa |
+| Slang Matching | rapidfuzz |
+| Imbalance Handling | imbalanced-learn (SMOTE) |
+| Visualisation | Matplotlib, Seaborn, WordCloud |
+| Dashboard | Gradio |
+| Caching | Python `pickle`, Google Drive |
+
+---
+
+## How to Run
+
+1. Open the notebook in Google Colab and connect to a **GPU runtime** (Runtime → Change runtime type → T4 GPU).
+2. Mount your Google Drive and update `BASE_DIR` in Step 1 to point to the folder containing the three CSV datasets.
+3. Run all cells sequentially. The `cache()` utility will automatically skip expensive steps (slang detection, RoBERTa labelling, tokenisation, model training) if results are already saved to Drive.
+4. The Gradio dashboard launches automatically at the end of Step 13 with a public share link.
+
+---
+
+## Key Design Decisions
+
+**Context via parent comment concatenation:** Combining each reply with its parent comment gives the model the conversational context needed to interpret sarcasm correctly (e.g., "Yeah that went really well" is only sarcastic in context).
+
+**RoBERTa over VADER for sentiment:** VADER is a lexical rule-based tool that struggles with irony and slang. Twitter-RoBERTa, trained on 124M tweets, better captures the register of Reddit comments and produces more reliable labels for model training.
+
+**Multi-Task Learning as the primary novelty:** Instead of training three separate models, the MTL architecture shares a single DistilBERT encoder across sarcasm, sentiment, and slang tasks. The shared encoder learns representations that benefit all three tasks simultaneously, and a single forward pass produces all three outputs — making it efficient for real-time use in the Gradio dashboard.
+
+**Prefix-gated fuzzy matching for slang:** Naively running fuzzy matching over the entire slang dictionary for every word would be prohibitively slow (O(n×m) comparisons). The prefix index reduces candidates to ~5 terms per word, making v2 slang detection practical at dataset scale.
+
+
+## Student
+**Kushalya Dandeniya** — w1954812  
+BSc (Hons) Business Data Analytics, University of Westminster
